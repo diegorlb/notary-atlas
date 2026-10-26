@@ -1,0 +1,21 @@
+[package]
+name = "notary-atlas"
+version = "0.1.0"
+edition = "2024"
+
+[lints.rust]
+unsafe_code = "warn"
+
+[lints.clippy]
+wildcard_dependencies = "warn"
+allow_attributes = "warn"
+clone_on_ref_ptr = "warn"
+create_dir = "warn"
+undocumented_unsafe_blocks = "warn"
+unused_result_ok = "warn"
+unused_trait_names = "warn"
+nursery = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+
+[dependencies]
+eframe = "0.37.0"
