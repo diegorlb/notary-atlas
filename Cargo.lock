@@ -1907,6 +1907,7 @@ name = "notary-atlas"
 version = "0.1.0"
 dependencies = [
  "eframe",
+ "tokio",
 ]
 
 [[package]]
