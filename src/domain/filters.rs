@@ -71,5 +71,8 @@ pub fn group_notaries(
             .push(index);
     }
 
-    groups.into_values().collect::<Vec<_>>()
+    let mut result: Vec<_> = groups.into_values().collect();
+    result.sort_by(|left, right| String::cmp(&left.location.formatted, &right.location.formatted));
+
+    result
 }

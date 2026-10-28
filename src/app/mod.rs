@@ -16,7 +16,7 @@ use tokio::{
     runtime::Handle,
     sync::mpsc::{UnboundedSender, unbounded_channel},
 };
-use walkers::{HttpTiles, MapMemory, sources::OpenStreetMap};
+use walkers::{HttpTiles, MapMemory, lat_lon, sources::OpenStreetMap};
 
 use crate::{
     app::ui::{DebugPanel, FilterBar, MapView, Sidebar},
@@ -24,6 +24,7 @@ use crate::{
     services::Geocoder,
 };
 
+#[derive(Clone)]
 pub enum State {
     Loading,
 
@@ -56,9 +57,9 @@ pub enum Command {
 }
 
 pub struct MapData {
-    pub rect: Option<Rect>,
-    pub tiles: HttpTiles,
-    pub memory: MapMemory,
+    rect: Option<Rect>,
+    tiles: HttpTiles,
+    memory: MapMemory,
 }
 
 impl MapData {
@@ -73,6 +74,36 @@ impl MapData {
             tiles,
             memory,
         }
+    }
+
+    pub fn zoom_in(&mut self) {
+        let _ = self.memory.zoom_in();
+    }
+
+    pub fn zoom_out(&mut self) {
+        let _ = self.memory.zoom_out();
+    }
+
+    pub fn move_map(&mut self, delta_x: f64, delta_y: f64) {
+        if delta_x == 0.0 && delta_y == 0.0 {
+            return;
+        }
+
+        let zoom = self.memory.zoom();
+        let scale = f64::powf(2.0, zoom);
+        let speed = 10.0 / scale;
+
+        let current_position = self
+            .memory
+            .detached()
+            .unwrap_or_else(|| lat_lon(-34.6037, -58.3816));
+
+        let (lon, lat) = current_position.x_y();
+
+        self.memory.center_at(lat_lon(
+            f64::mul_add(delta_y, speed, lat),
+            f64::mul_add(delta_x, speed, lon),
+        ));
     }
 }
 
@@ -226,8 +257,8 @@ impl NotaryAtlas {
         });
     }
 
-    fn render_failed(&self, ui: &mut Ui) {
-        let State::Failed(error_message) = &self.state else {
+    fn render_failed(&mut self, ui: &mut Ui) {
+        let State::Failed(error_message) = self.state.clone() else {
             return;
         };
 
@@ -241,6 +272,13 @@ impl NotaryAtlas {
                                 .strong()
                                 .color(Color32::DARK_RED),
                         );
+
+                        ui.add_space(15.0);
+
+                        if ui.button("Reintentar").clicked() {
+                            self.state = State::Loading;
+                            let _ = self.worker_tx.send(Command::RefreshData);
+                        }
                     });
                 });
         });
@@ -311,23 +349,56 @@ impl App for NotaryAtlas {
     }
 
     fn logic(&mut self, ctx: &Context, _: &mut Frame) {
+        let wants_keyboard = ctx.egui_wants_keyboard_input();
+
         ctx.input(|input| {
             if input.key_pressed(Key::F3) {
                 self.debug = !self.debug;
             }
 
-            if input.key_pressed(Key::Escape) {
-                // TODO: implement quit on escape
-            }
+            if !wants_keyboard {
+                if input.key_pressed(Key::Plus) {
+                    self.map_data.zoom_in();
+                }
 
-            if input.key_pressed(Key::Plus) {
-                let _ = self.map_data.memory.zoom_in();
-            }
+                if input.key_pressed(Key::Minus) {
+                    self.map_data.zoom_out();
+                }
 
-            if input.key_pressed(Key::Minus) {
-                let _ = self.map_data.memory.zoom_out();
+                let (mut delta_x, mut delta_y) = (0.0, 0.0);
+
+                if input.key_down(Key::ArrowUp) {
+                    delta_y += 1.0;
+                }
+
+                if input.key_down(Key::ArrowDown) {
+                    delta_y -= 1.0;
+                }
+
+                if input.key_down(Key::ArrowLeft) {
+                    delta_x -= 1.0;
+                }
+
+                if input.key_down(Key::ArrowRight) {
+                    delta_x += 1.0;
+                }
+
+                self.map_data.move_map(delta_x, delta_y);
             }
         });
+
+        if !wants_keyboard {
+            let is_panning = ctx.input(|input| {
+                input.key_down(Key::ArrowUp)
+                    || input.key_down(Key::ArrowDown)
+                    || input.key_down(Key::ArrowLeft)
+                    || input.key_down(Key::ArrowRight)
+            });
+
+            if is_panning {
+                ctx.request_repaint();
+            }
+        }
 
         self.read_receiver();
     }
