@@ -139,9 +139,9 @@ pub struct GeocodedNotary {
 }
 
 #[derive(Clone)]
-pub struct NotariesGroupedByLocation {
+pub struct NotariesGroupedIndices {
     pub location: Location,
-    pub notaries: Vec<Notary>,
+    pub indices: Vec<usize>,
 }
 
 #[derive(Default, PartialEq, Eq, Clone)]

@@ -1,7 +1,10 @@
 mod ui;
 
 use std::{
-    sync::mpsc::{Receiver, channel},
+    sync::{
+        Arc,
+        mpsc::{Receiver, channel},
+    },
     time::Instant,
 };
 
@@ -16,20 +19,33 @@ use tokio::{
 use walkers::{HttpTiles, MapMemory, sources::OpenStreetMap};
 
 use crate::{
-    app::ui::{FilterBar, MapView, Sidebar},
-    domain::{Filters, NotariesGroupedByLocation, apply_filters, group_notaries},
+    app::ui::{DebugPanel, FilterBar, MapView, Sidebar},
+    domain::{Filters, GeocodedNotary, NotariesGroupedIndices, apply_filters, group_notaries},
     services::Geocoder,
 };
 
 pub enum State {
     Loading,
-    Loaded(Vec<NotariesGroupedByLocation>),
+
+    Loaded {
+        data: Arc<Vec<GeocodedNotary>>,
+        groups: Vec<NotariesGroupedIndices>,
+        unfiltered: Arc<Vec<NotariesGroupedIndices>>,
+    },
+
     Failed(String),
 }
 
 pub enum Payload {
-    NotariesLoaded(Vec<NotariesGroupedByLocation>),
-    FilteredResults(Vec<NotariesGroupedByLocation>),
+    NotariesLoaded {
+        data: Arc<Vec<GeocodedNotary>>,
+        groups: Vec<NotariesGroupedIndices>,
+        unfiltered: Arc<Vec<NotariesGroupedIndices>>,
+    },
+
+    FilteredResults(Vec<NotariesGroupedIndices>),
+    ClearFilters,
+
     NotariesFailed(String),
 }
 
@@ -62,6 +78,7 @@ impl MapData {
 
 pub struct NotaryAtlas {
     state: State,
+    debug: bool,
 
     current_filters: Filters,
     applied_filters: Filters,
@@ -85,18 +102,24 @@ impl NotaryAtlas {
             let mut geocoder = Geocoder::default();
             geocoder.load_caches().await;
 
-            let mut cached_geocoded_notaries = Vec::new();
+            let mut cached_geocoded_notaries = Arc::default();
 
             while let Some(command) = worker_rx.recv().await {
                 let payload = match command {
                     Command::LoadInitialData | Command::RefreshData => {
                         match geocoder.geocode().await {
                             Ok(notaries) => {
-                                cached_geocoded_notaries = notaries;
-                                let grouped_notaries =
-                                    group_notaries(cached_geocoded_notaries.iter().cloned());
+                                let data = Arc::new(notaries);
+                                let groups = group_notaries(&data, 0..data.len());
+                                let unfiltered = Arc::new(groups.clone());
 
-                                Payload::NotariesLoaded(grouped_notaries)
+                                cached_geocoded_notaries = Arc::clone(&data);
+
+                                Payload::NotariesLoaded {
+                                    data,
+                                    groups,
+                                    unfiltered,
+                                }
                             }
 
                             Err(error) => Payload::NotariesFailed(error.to_string()),
@@ -104,9 +127,13 @@ impl NotaryAtlas {
                     }
 
                     Command::ApplyFilters(filters) => {
-                        let filtered = apply_filters(&cached_geocoded_notaries, &filters);
+                        if filters.is_empty() {
+                            Payload::ClearFilters
+                        } else {
+                            let filtered = apply_filters(&cached_geocoded_notaries, &filters);
 
-                        Payload::FilteredResults(filtered)
+                            Payload::FilteredResults(filtered)
+                        }
                     }
                 };
 
@@ -120,6 +147,7 @@ impl NotaryAtlas {
 
         Self {
             state: State::Loading,
+            debug: false,
 
             current_filters: Filters::default(),
             applied_filters: Filters::default(),
@@ -173,17 +201,25 @@ impl NotaryAtlas {
                 .send(Command::ApplyFilters(self.current_filters.clone()));
         }
 
-        let State::Loaded(groups) = &self.state else {
+        let State::Loaded { data, groups, .. } = &self.state else {
             return;
         };
 
+        ui.add(DebugPanel {
+            total: data.len(),
+            groups,
+            debug: &mut self.debug,
+        });
+
         ui.add(Sidebar {
+            data,
             groups,
             selected_group: &mut self.selected_group,
             map_data: &mut self.map_data,
         });
 
         ui.add(MapView {
+            data,
             groups,
             selected_group: &mut self.selected_group,
             map_data: &mut self.map_data,
@@ -216,8 +252,47 @@ impl NotaryAtlas {
         };
 
         match payload {
-            Payload::NotariesLoaded(groups) | Payload::FilteredResults(groups) => {
-                self.state = State::Loaded(groups);
+            Payload::NotariesLoaded {
+                data,
+                groups,
+                unfiltered,
+            } => {
+                self.state = State::Loaded {
+                    data,
+                    groups,
+                    unfiltered,
+                };
+
+                self.selected_group = None;
+            }
+
+            Payload::FilteredResults(groups) => {
+                if let State::Loaded {
+                    data, unfiltered, ..
+                } = &mut self.state
+                {
+                    self.state = State::Loaded {
+                        data: Arc::clone(data),
+                        groups,
+                        unfiltered: Arc::clone(unfiltered),
+                    };
+                }
+
+                self.selected_group = None;
+            }
+
+            Payload::ClearFilters => {
+                if let State::Loaded {
+                    data, unfiltered, ..
+                } = &mut self.state
+                {
+                    self.state = State::Loaded {
+                        data: Arc::clone(data),
+                        groups: (**unfiltered).clone(),
+                        unfiltered: Arc::clone(unfiltered),
+                    };
+                }
+
                 self.selected_group = None;
             }
 
@@ -230,13 +305,17 @@ impl App for NotaryAtlas {
     fn ui(&mut self, ui: &mut Ui, _: &mut Frame) {
         match self.state {
             State::Loading => self.render_loading(ui),
-            State::Loaded(_) => self.render_loaded(ui),
+            State::Loaded { .. } => self.render_loaded(ui),
             State::Failed(_) => self.render_failed(ui),
         }
     }
 
     fn logic(&mut self, ctx: &Context, _: &mut Frame) {
         ctx.input(|input| {
+            if input.key_pressed(Key::F3) {
+                self.debug = !self.debug;
+            }
+
             if input.key_pressed(Key::Escape) {
                 // TODO: implement quit on escape
             }

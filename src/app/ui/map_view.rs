@@ -3,11 +3,12 @@ use walkers::{Map, Plugin, lat_lon};
 
 use crate::{
     app::{MapData, ui::map_marker::MapMarker},
-    domain::NotariesGroupedByLocation,
+    domain::{GeocodedNotary, NotariesGroupedIndices},
 };
 
 pub struct MapView<'a> {
-    pub groups: &'a [NotariesGroupedByLocation],
+    pub data: &'a [GeocodedNotary],
+    pub groups: &'a [NotariesGroupedIndices],
     pub selected_group: &'a mut Option<usize>,
 
     pub map_data: &'a mut MapData,
@@ -26,6 +27,7 @@ impl Widget for MapView<'_> {
                         )
                         .double_click_to_zoom(true)
                         .with_plugin(MapViewPlugin {
+                            data: self.data,
                             groups: self.groups,
                             selected_group: self.selected_group,
                         }),
@@ -55,7 +57,8 @@ impl Widget for MapView<'_> {
 }
 
 struct MapViewPlugin<'a> {
-    pub groups: &'a [NotariesGroupedByLocation],
+    pub data: &'a [GeocodedNotary],
+    pub groups: &'a [NotariesGroupedIndices],
     pub selected_group: &'a mut Option<usize>,
 }
 
@@ -81,11 +84,12 @@ impl Plugin for MapViewPlugin<'_> {
                 continue;
             }
 
-            let notaries = &grouped_notaries.notaries;
+            let indices = &grouped_notaries.indices;
             let marker = MapMarker {
                 index,
+                data: self.data,
+                indices,
                 location,
-                notaries,
                 is_selected: *self.selected_group == Some(index),
             };
 

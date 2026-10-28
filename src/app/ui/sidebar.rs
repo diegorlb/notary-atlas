@@ -1,12 +1,16 @@
 use eframe::egui::{Button, Color32, Panel, Response, RichText, ScrollArea, Ui, Widget};
 use walkers::lat_lon;
 
-use crate::{app::MapData, domain::NotariesGroupedByLocation};
+use crate::{
+    app::MapData,
+    domain::{GeocodedNotary, NotariesGroupedIndices},
+};
 
 const MAX_DISPLAY: usize = 50;
 
 pub struct Sidebar<'a> {
-    pub groups: &'a [NotariesGroupedByLocation],
+    pub data: &'a [GeocodedNotary],
+    pub groups: &'a [NotariesGroupedIndices],
     pub selected_group: &'a mut Option<usize>,
 
     pub map_data: &'a mut MapData,
@@ -19,7 +23,7 @@ impl Widget for Sidebar<'_> {
             .min_size(220.0)
             .show(ui, |ui| {
                 let filtered_count: usize =
-                    self.groups.iter().map(|group| group.notaries.len()).sum();
+                    self.groups.iter().map(|group| group.indices.len()).sum();
 
                 ui.add_space(8.0);
                 ui.label(
@@ -59,7 +63,9 @@ impl Widget for Sidebar<'_> {
 
                                     ui.add_space(2.0);
 
-                                    for notary in &group.notaries {
+                                    for &index in &group.indices {
+                                        let notary = &self.data[index].notary;
+
                                         ui.label(
                                             RichText::new(format!(
                                                 "- {}, {}",

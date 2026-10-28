@@ -3,7 +3,7 @@ use eframe::egui::{
     ScrollArea, Stroke, Ui, Vec2, Window,
 };
 
-use crate::domain::{Location, Notary, Precision};
+use crate::domain::{GeocodedNotary, Location, Precision};
 
 const MARKER_RADIUS: f32 = 6.0;
 const MARKER_SIZE: Vec2 = Vec2::splat(2.0 * MARKER_RADIUS + 4.0);
@@ -12,8 +12,9 @@ const POSITION_OFFSET: Vec2 = Vec2::new(MARKER_RADIUS + 4.0, MARKER_RADIUS + 4.0
 pub struct MapMarker<'a> {
     pub index: usize,
 
+    pub data: &'a [GeocodedNotary],
     pub location: &'a Location,
-    pub notaries: &'a [Notary],
+    pub indices: &'a [usize],
 
     pub is_selected: bool,
 }
@@ -88,8 +89,8 @@ impl MapMarker<'_> {
         ui.label(
             RichText::new(format!(
                 "Hay {} escribano{} en esta dirección",
-                self.notaries.len(),
-                if self.notaries.len() == 1 { "" } else { "s" }
+                self.indices.len(),
+                if self.indices.len() == 1 { "" } else { "s" }
             ))
             .strong()
             .color(Color32::LIGHT_GRAY),
@@ -102,7 +103,9 @@ impl MapMarker<'_> {
             .max_height(350.0)
             .auto_shrink([false, true])
             .show(ui, |ui| {
-                for (index, notary) in self.notaries.iter().enumerate() {
+                for (index, &notary_index) in self.indices.iter().enumerate() {
+                    let notary = &self.data[notary_index].notary;
+
                     if index > 0 {
                         ui.add_space(8.0);
                     }
