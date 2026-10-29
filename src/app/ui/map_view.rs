@@ -111,7 +111,12 @@ impl Plugin for MapViewPlugin<'_> {
 
             let is_clicked = marker.draw(ui.ctx(), response, ui.painter(), screen_position);
             if is_clicked {
-                *self.selected_group = Some(marker.index);
+                *self.selected_group = if *self.selected_group == Some(marker.index) {
+                    None
+                } else {
+                    Some(marker.index)
+                };
+
                 any_marker_clicked = true;
             }
         }

@@ -275,12 +275,17 @@ impl Geocoder {
                     using_centroid += 1;
 
                     let department_name = &normalized_address.department_name;
-                    let department_data = self.department_cache.get(department_name).unwrap();
+                    let (department_lat, department_lon) = self
+                        .department_cache
+                        .get(department_name)
+                        .map_or((-34.6037, -58.3816), |department_data| {
+                            (department_data.lat, department_data.lon)
+                        });
 
                     Location::from_centroid(
                         normalized_address.address.clone(),
-                        department_data.lat,
-                        department_data.lon,
+                        department_lat,
+                        department_lon,
                     )
                 });
 

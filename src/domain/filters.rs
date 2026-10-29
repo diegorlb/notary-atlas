@@ -22,29 +22,34 @@ pub fn apply_filters(
             .iter()
             .enumerate()
             .filter_map(|(index, geocoded_notary)| {
-                if let Some(precision) = &filters.precision {
-                    let geocoded_notary_precision = geocoded_notary
-                        .geocoded
-                        .as_ref()
-                        .map(|location| &location.precision);
+                let Some(location) = &geocoded_notary.geocoded else {
+                    return None;
+                };
 
-                    if geocoded_notary_precision != Some(precision) {
+                if let Some(precision) = &filters.precision {
+                    let geocoded_precision = &location.precision;
+
+                    if geocoded_precision != precision {
                         return None;
                     }
                 }
 
-                let location_matches = geocoded_notary
-                    .geocoded
-                    .as_ref()
-                    .is_some_and(|location| contains(&location.normalized, &filter_location));
-
                 let search_key = &geocoded_notary.notary.search_key;
 
-                let matches = search_key.contains(&filter_name)
-                    && search_key.contains(&filter_registry)
-                    && (location_matches || search_key.contains(&filter_location));
+                if !search_key.contains(&filter_name) {
+                    return None;
+                }
 
-                if matches { Some(index) } else { None }
+                if !search_key.contains(&filter_registry) {
+                    return None;
+                }
+
+                let location_matches = contains(&location.normalized, &filter_location);
+                if !location_matches && !search_key.contains(&filter_location) {
+                    return None;
+                }
+
+                Some(index)
             });
 
     group_notaries(geocoded_notaries, filtered_indices)

@@ -266,15 +266,7 @@ impl NotaryAtlas {
             map_data: &mut self.map_data,
         });
 
-        if self.screenshot_pending {
-            self.handle_screenshot(ui.ctx());
-
-            self.screenshot_pending = false;
-        } else if matches!(map_action, MapAction::SaveScreenshot) {
-            self.screenshot_pending = true;
-
-            ui.ctx().request_repaint();
-        }
+        self.handle_map_action(ui.ctx(), &map_action);
     }
 
     fn render_failed(&mut self, ui: &mut Ui) {
@@ -356,7 +348,23 @@ impl NotaryAtlas {
         }
     }
 
-    fn handle_screenshot(&self, context: &Context) {
+    fn handle_map_action(&mut self, context: &Context, map_action: &MapAction) {
+        if self.screenshot_pending {
+            self.handle_map_screenshot(context);
+            self.screenshot_pending = false;
+        }
+
+        match map_action {
+            MapAction::None => {}
+
+            MapAction::SaveScreenshot => {
+                self.screenshot_pending = true;
+                context.request_repaint();
+            }
+        }
+    }
+
+    fn handle_map_screenshot(&self, context: &Context) {
         let Some(rect) = self.map_data.rect else {
             return;
         };
