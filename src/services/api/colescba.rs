@@ -125,7 +125,8 @@ impl ColescbaClient {
                     raw_notary.registry.as_deref().unwrap_or_default(),
                     raw_notary.city.as_deref().unwrap_or_default(),
                     raw_notary.district.description
-                )),
+                ))
+                .into_owned(),
 
                 tax_id: raw_notary.tax_id,
 

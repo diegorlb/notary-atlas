@@ -22,7 +22,7 @@ pub struct Location {
 impl Location {
     pub fn from_exact(address: String, lat: f64, lon: f64) -> Self {
         Self {
-            normalized: unaccent_and_lower(&address),
+            normalized: unaccent_and_lower(&address).into_owned(),
             formatted: address,
 
             lat,
@@ -34,7 +34,7 @@ impl Location {
 
     pub fn from_centroid(address: String, lat: f64, lon: f64) -> Self {
         Self {
-            normalized: unaccent_and_lower(&address),
+            normalized: unaccent_and_lower(&address).into_owned(),
             formatted: address,
 
             lat,

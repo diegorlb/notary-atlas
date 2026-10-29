@@ -1,12 +1,16 @@
 mod regex;
 
+use std::borrow::Cow;
+
 use itertools::Itertools as _;
+
+use crate::domain::address::regex::{CLEANUP_CHARS, CLEANUP_SET};
 
 use super::address::regex::{
     BETWEEN, BUILDING, DANGLING_NUMBER, DASH_ALIAS, FLOOR_AFTER_NUMBER, FLOOR_OFFICE_NOTATION,
     IMPLICIT_BETWEEN, INTERSECTION, KM, KM_NUMBER_PATTERN, MISSING_SPACE_DOT_PATTERN, NO_NUMBER,
-    NUMBER_ANCHORED, NUMBER_PREFIX_FIX, NUMBER_TRAILING, NUMERIC_CROSS, PARENTHESES, QUOTES,
-    STREET_TYPE_PATTERN, SYMBOLS, TAIL_NUMBER, UNIT,
+    NUMBER_ANCHORED, NUMBER_PREFIX_FIX, NUMBER_TRAILING, NUMERIC_CROSS, PARENTHESES,
+    STREET_TYPE_PATTERN, TAIL_NUMBER, UNIT,
 };
 
 pub fn word_to_digit(word: &str) -> &str {
@@ -18,20 +22,29 @@ pub fn word_to_digit(word: &str) -> &str {
     }
 }
 
-pub fn unaccent_and_lower(text: &str) -> String {
-    text.chars()
-        .flat_map(char::to_lowercase)
-        .map(|character| match character {
-            'á' => 'a',
-            'é' => 'e',
-            'í' => 'i',
-            'ó' => 'o',
-            'ú' | 'ü' => 'u',
-            'ñ' => 'n',
+pub fn unaccent_and_lower(text: &str) -> Cow<'_, str> {
+    let needs_change = text.chars().any(|character| {
+        character.is_uppercase() || matches!(character, 'á' | 'é' | 'í' | 'ó' | 'ú' | 'ü')
+    });
 
-            character => character,
-        })
-        .collect()
+    if !needs_change {
+        return Cow::Borrowed(text);
+    }
+
+    Cow::Owned(
+        text.chars()
+            .flat_map(char::to_lowercase)
+            .map(|character| match character {
+                'á' => 'a',
+                'é' => 'e',
+                'í' => 'i',
+                'ó' => 'o',
+                'ú' | 'ü' => 'u',
+
+                character => character,
+            })
+            .collect(),
+    )
 }
 
 pub fn expand_abbreviations(text: &str) -> String {
@@ -103,33 +116,52 @@ pub fn simplify_for_match(text: &str) -> String {
 }
 
 pub fn parse_address(address: &str) -> (String, String, Option<String>) {
-    let address = SYMBOLS.replace_all(address, " ");
-    let address = expand_abbreviations(&address);
+    let address = CLEANUP_CHARS.replace_all(address, " ");
+    let mut address = expand_abbreviations(&address);
 
     let km_number = KM_NUMBER_PATTERN
         .captures(&address)
         .and_then(|cap| cap.get(1).map(|m| m.as_str().replace(',', ".")));
 
-    let address = PARENTHESES.replace_all(&address, " ");
-    let address = DASH_ALIAS.replace_all(&address, " ");
-    let address = QUOTES.replace_all(&address, " ");
-    let address = KM.replace_all(&address, " ");
-    let address = DANGLING_NUMBER.replace(&address, "");
-    let address = FLOOR_AFTER_NUMBER.replace(&address, "");
-    let address = drop_building(address.trim());
+    let matches = CLEANUP_SET.matches(&address);
 
-    let address = UNIT.replace_all(&address, "");
-    let address = INTERSECTION.replace_all(&address, " ${1}");
+    if matches.matched(0) {
+        address = PARENTHESES.replace_all(&address, " ").into_owned();
+    }
 
-    let address = if unaccent_and_lower(&address).starts_with("entre rios") {
-        address.into_owned()
+    if matches.matched(1) {
+        address = DASH_ALIAS.replace_all(&address, " ").into_owned();
+    }
+
+    if matches.matched(2) {
+        address = KM.replace_all(&address, " ").into_owned();
+    }
+
+    if matches.matched(3) {
+        address = DANGLING_NUMBER.replace(&address, "").into_owned();
+    }
+
+    if matches.matched(4) {
+        address = FLOOR_AFTER_NUMBER.replace(&address, "").into_owned();
+    }
+
+    address = drop_building(address.trim());
+
+    if matches.matched(5) {
+        address = UNIT.replace_all(&address, "").into_owned();
+    }
+
+    address = INTERSECTION.replace_all(&address, " ${1}").into_owned();
+
+    address = if unaccent_and_lower(&address).starts_with("entre rios") {
+        address
     } else {
         BETWEEN.replace_all(&address, " ${1}").into_owned()
     };
 
-    let address = IMPLICIT_BETWEEN.replace_all(&address, "${1}");
-    let address = STREET_TYPE_PATTERN.replace_all(&address, "");
-    let address = address.split_whitespace().join(" ");
+    address = IMPLICIT_BETWEEN.replace_all(&address, "${1}").into_owned();
+    address = STREET_TYPE_PATTERN.replace_all(&address, "").into_owned();
+    address = address.split_whitespace().join(" ");
 
     if !address.is_empty() && address.bytes().all(|b| b.is_ascii_digit()) {
         return (address.clone(), String::new(), Some(address));

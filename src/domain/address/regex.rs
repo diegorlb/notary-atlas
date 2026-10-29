@@ -1,8 +1,26 @@
 use std::sync::LazyLock;
 
-use regex::Regex;
+use regex::{Regex, RegexSet};
 
-pub static SYMBOLS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[#\\/|@_]").unwrap());
+pub static CLEANUP_CHARS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"[#\\/|@_"']"#).unwrap());
+
+pub static CLEANUP_SET: LazyLock<RegexSet> = LazyLock::new(|| {
+    RegexSet::new([
+        // PARENTHESES
+        r"\([^)]*(?:\)|$)",
+        // DASH_ALIAS
+        r"\s*-[^-]+-\s*",
+        // KM_NUMBER_PATTERN
+        r"\bkm\b\.?\s*\d+(?:[.,]\d+)?",
+        // DANGLING_NUMBER
+        r"\b(?:n[º°.]?|nro\.?|numero)[\s,;.]*$",
+        // FLOOR_AFTER_NUMBER
+        r"\b(\d+)\s+(?:\d+\s*(?:[º°ª]|er\b)|(?:p|pb|pa|of)\b).*$",
+        // UNIT
+        r"(?is)\s*\b(?:dpto|depto|dto|piso|oficina|ofic|local|uf)\b\.?.*$",
+    ])
+    .unwrap()
+});
 
 pub static MISSING_SPACE_DOT_PATTERN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"([a-zA-Z])\.([a-zA-Z])").unwrap());
@@ -27,8 +45,6 @@ pub static NUMBER_TRAILING: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)\b(\d+)(?:\s*(?:bis|[a-z]))?\s*$").unwrap());
 
 pub static PARENTHESES: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\([^)]*(?:\)|$)").unwrap());
-
-pub static QUOTES: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"["'´`‘’“”]"#).unwrap());
 
 pub static KM: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\bkm\b\.?\s*\d+(?:[.,]\d+)?").unwrap());

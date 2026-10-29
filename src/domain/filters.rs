@@ -36,16 +36,16 @@ pub fn apply_filters(
 
                 let search_key = &geocoded_notary.notary.search_key;
 
-                if !search_key.contains(&filter_name) {
+                if !search_key.contains(filter_name.as_ref()) {
                     return None;
                 }
 
-                if !search_key.contains(&filter_registry) {
+                if !search_key.contains(filter_registry.as_ref()) {
                     return None;
                 }
 
                 let location_matches = contains(&location.normalized, &filter_location);
-                if !location_matches && !search_key.contains(&filter_location) {
+                if !location_matches && !search_key.contains(filter_location.as_ref()) {
                     return None;
                 }
 
