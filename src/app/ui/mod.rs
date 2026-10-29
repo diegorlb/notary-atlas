@@ -6,5 +6,5 @@ mod sidebar;
 
 pub use debug_panel::DebugPanel;
 pub use filter_bar::FilterBar;
-pub use map_view::MapView;
+pub use map_view::{MapAction, MapView};
 pub use sidebar::Sidebar;

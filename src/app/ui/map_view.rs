@@ -6,10 +6,18 @@ use crate::{
     domain::{GeocodedNotary, NotariesGroupedIndices},
 };
 
+pub enum MapAction {
+    None,
+    SaveScreenshot,
+}
+
 pub struct MapView<'a> {
     pub data: &'a [GeocodedNotary],
     pub groups: &'a [NotariesGroupedIndices],
     pub selected_group: &'a mut Option<usize>,
+
+    pub is_capturing: bool,
+    pub map_action: &'a mut MapAction,
 
     pub map_data: &'a mut MapData,
 }
@@ -36,21 +44,29 @@ impl Widget for MapView<'_> {
 
                 self.map_data.rect = Some(map_response.response.rect);
 
-                Area::new(Id::unique("map_controls"))
-                    .anchor(Align2::RIGHT_BOTTOM, Vec2::new(-16.0, -16.0))
-                    .show(ui.ctx(), |ui| {
-                        Frame::default().show(ui, |ui| {
-                            ui.vertical_centered(|ui| {
-                                if ui.button(RichText::new("+").size(24.0)).clicked() {
-                                    let _ = self.map_data.memory.zoom_in();
-                                }
+                if !self.is_capturing {
+                    Area::new(Id::unique("map_controls"))
+                        .anchor(Align2::RIGHT_BOTTOM, Vec2::new(-16.0, -16.0))
+                        .show(ui.ctx(), |ui| {
+                            Frame::default().show(ui, |ui| {
+                                ui.vertical_centered(|ui| {
+                                    if ui.button(RichText::new("+").size(24.0)).clicked() {
+                                        self.map_data.zoom_in();
+                                    }
 
-                                if ui.button(RichText::new("-").size(24.0)).clicked() {
-                                    let _ = self.map_data.memory.zoom_out();
-                                }
+                                    if ui.button(RichText::new("-").size(24.0)).clicked() {
+                                        self.map_data.zoom_out();
+                                    }
+
+                                    ui.separator();
+
+                                    if ui.button(RichText::new("Guardar")).clicked() {
+                                        *self.map_action = MapAction::SaveScreenshot;
+                                    }
+                                });
                             });
                         });
-                    });
+                }
             })
             .response
     }

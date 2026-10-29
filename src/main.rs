@@ -3,7 +3,7 @@ mod domain;
 mod services;
 mod utils;
 
-use eframe::{NativeOptions, Result, egui::ViewportBuilder, run_native};
+use eframe::{NativeOptions, Renderer, Result, egui::ViewportBuilder, run_native};
 use tokio::runtime::Runtime;
 
 use crate::app::NotaryAtlas;
@@ -18,6 +18,7 @@ fn main() -> Result {
 
     let options = NativeOptions {
         viewport: ViewportBuilder::default().with_inner_size([800.0, 600.0]),
+        renderer: Renderer::Wgpu,
         ..Default::default()
     };
 

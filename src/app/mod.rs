@@ -5,13 +5,14 @@ use std::{
         Arc,
         mpsc::{Receiver, channel},
     },
-    time::Instant,
+    time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
 use eframe::{
     App, CreationContext, Frame,
     egui::{Align2, Area, CentralPanel, Color32, Context, Id, Key, Rect, RichText, Ui, Vec2},
 };
+use image::{ImageBuffer, Rgba, imageops};
 use tokio::{
     runtime::Handle,
     sync::mpsc::{UnboundedSender, unbounded_channel},
@@ -19,7 +20,7 @@ use tokio::{
 use walkers::{HttpTiles, MapMemory, lat_lon, sources::OpenStreetMap};
 
 use crate::{
-    app::ui::{DebugPanel, FilterBar, MapView, Sidebar},
+    app::ui::{DebugPanel, FilterBar, MapAction, MapView, Sidebar},
     domain::{Filters, GeocodedNotary, NotariesGroupedIndices, apply_filters, group_notaries},
     services::Geocoder,
 };
@@ -117,6 +118,8 @@ pub struct NotaryAtlas {
 
     selected_group: Option<usize>,
 
+    screenshot_pending: bool,
+
     ui_rx: Receiver<Payload>,
     worker_tx: UnboundedSender<Command>,
 
@@ -186,6 +189,8 @@ impl NotaryAtlas {
 
             selected_group: None,
 
+            screenshot_pending: false,
+
             ui_rx,
             worker_tx,
 
@@ -224,7 +229,7 @@ impl NotaryAtlas {
         }
 
         if self.applied_filters != self.current_filters
-            && self.last_edit.elapsed().as_millis() >= 150
+            && self.last_edit.elapsed().as_millis() >= 400
         {
             self.applied_filters = self.current_filters.clone();
             let _ = self
@@ -249,12 +254,27 @@ impl NotaryAtlas {
             map_data: &mut self.map_data,
         });
 
+        let mut map_action = MapAction::None;
         ui.add(MapView {
             data,
             groups,
             selected_group: &mut self.selected_group,
+
+            is_capturing: self.screenshot_pending,
+            map_action: &mut map_action,
+
             map_data: &mut self.map_data,
         });
+
+        if self.screenshot_pending {
+            self.handle_screenshot(ui.ctx());
+
+            self.screenshot_pending = false;
+        } else if matches!(map_action, MapAction::SaveScreenshot) {
+            self.screenshot_pending = true;
+
+            ui.ctx().request_repaint();
+        }
     }
 
     fn render_failed(&mut self, ui: &mut Ui) {
@@ -285,57 +305,116 @@ impl NotaryAtlas {
     }
 
     fn read_receiver(&mut self) {
-        let Ok(payload) = self.ui_rx.try_recv() else {
-            return;
-        };
-
-        match payload {
-            Payload::NotariesLoaded {
-                data,
-                groups,
-                unfiltered,
-            } => {
-                self.state = State::Loaded {
+        while let Ok(payload) = self.ui_rx.try_recv() {
+            match payload {
+                Payload::NotariesLoaded {
                     data,
                     groups,
                     unfiltered,
+                } => {
+                    self.state = State::Loaded {
+                        data,
+                        groups,
+                        unfiltered,
+                    };
+
+                    self.selected_group = None;
+                }
+
+                Payload::FilteredResults(groups) => {
+                    if let State::Loaded {
+                        data, unfiltered, ..
+                    } = &mut self.state
+                    {
+                        self.state = State::Loaded {
+                            data: Arc::clone(data),
+                            groups,
+                            unfiltered: Arc::clone(unfiltered),
+                        };
+                    }
+
+                    self.selected_group = None;
+                }
+
+                Payload::ClearFilters => {
+                    if let State::Loaded {
+                        data, unfiltered, ..
+                    } = &mut self.state
+                    {
+                        self.state = State::Loaded {
+                            data: Arc::clone(data),
+                            groups: (**unfiltered).clone(),
+                            unfiltered: Arc::clone(unfiltered),
+                        };
+                    }
+
+                    self.selected_group = None;
+                }
+
+                Payload::NotariesFailed(error) => self.state = State::Failed(error),
+            }
+        }
+    }
+
+    fn handle_screenshot(&self, context: &Context) {
+        let Some(rect) = self.map_data.rect else {
+            return;
+        };
+
+        let ppp = context.pixels_per_point();
+
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            clippy::cast_precision_loss
+        )]
+        context.request_screenshot(move |screenshot| {
+            let full_width = u32::try_from(screenshot.width()).unwrap_or_default();
+            let full_height = u32::try_from(screenshot.height()).unwrap_or_default();
+
+            let min_x = f32::max(0.0, rect.min.x * ppp) as u32;
+            let min_y = f32::max(0.0, rect.min.y * ppp) as u32;
+
+            let max_x = f32::min(full_width as f32, rect.max.x * ppp) as u32;
+            let max_y = f32::max(full_height as f32, rect.max.y * ppp) as u32;
+
+            let width = u32::saturating_sub(max_x, min_x);
+            let height = u32::saturating_sub(max_y, min_y);
+
+            if width == 0 || height == 0 {
+                return;
+            }
+
+            let raw_image = screenshot.as_raw().to_vec();
+
+            std::thread::spawn(move || {
+                let buffer =
+                    ImageBuffer::<Rgba<_>, _>::from_raw(full_width, full_height, raw_image);
+                let Some(mut buffer) = buffer else {
+                    return;
                 };
 
-                self.selected_group = None;
-            }
+                let cropped_buffer = imageops::crop(&mut buffer, min_x, min_y, width, height);
+                let cropped_image = cropped_buffer.to_image();
 
-            Payload::FilteredResults(groups) => {
-                if let State::Loaded {
-                    data, unfiltered, ..
-                } = &mut self.state
-                {
-                    self.state = State::Loaded {
-                        data: Arc::clone(data),
-                        groups,
-                        unfiltered: Arc::clone(unfiltered),
-                    };
+                let timestamp = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs();
+
+                let filename = format!("map_{timestamp}.png");
+
+                match cropped_image.save(&filename) {
+                    Ok(()) => {
+                        log::info!("Map successfully saved as {filename}");
+                    }
+
+                    Err(error) => {
+                        log::error!("Failed to save map snapshot: {error}");
+                    }
                 }
-
-                self.selected_group = None;
-            }
-
-            Payload::ClearFilters => {
-                if let State::Loaded {
-                    data, unfiltered, ..
-                } = &mut self.state
-                {
-                    self.state = State::Loaded {
-                        data: Arc::clone(data),
-                        groups: (**unfiltered).clone(),
-                        unfiltered: Arc::clone(unfiltered),
-                    };
-                }
-
-                self.selected_group = None;
-            }
-
-            Payload::NotariesFailed(error) => self.state = State::Failed(error),
-        }
+            });
+        });
     }
 }
 
