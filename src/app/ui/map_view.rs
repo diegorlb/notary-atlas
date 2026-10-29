@@ -1,4 +1,7 @@
-use eframe::egui::{Align2, Area, CentralPanel, Frame, Id, Response, RichText, Ui, Vec2, Widget};
+use eframe::egui::{
+    Align2, Area, Button, CentralPanel, Color32, CursorIcon, Frame, Id, Response, RichText, Ui,
+    Vec2, Widget,
+};
 use walkers::{Map, Plugin, lat_lon};
 
 use crate::{
@@ -48,23 +51,67 @@ impl Widget for MapView<'_> {
                     Area::new(Id::unique("map_controls"))
                         .anchor(Align2::RIGHT_BOTTOM, Vec2::new(-16.0, -16.0))
                         .show(ui.ctx(), |ui| {
-                            Frame::default().show(ui, |ui| {
-                                ui.vertical_centered(|ui| {
-                                    if ui.button(RichText::new("+").size(24.0)).clicked() {
-                                        self.map_data.zoom_in();
-                                    }
+                            Frame::default()
+                                .fill(Color32::from_black_alpha(180))
+                                .corner_radius(8.0)
+                                .inner_margin(8.0)
+                                .show(ui, |ui| {
+                                    ui.vertical_centered(|ui| {
+                                        let button_size = Vec2::new(20.0, 20.0);
 
-                                    if ui.button(RichText::new("-").size(24.0)).clicked() {
-                                        self.map_data.zoom_out();
-                                    }
+                                        let zoom_in_button = ui
+                                            .add_sized(
+                                                button_size,
+                                                Button::new(RichText::new("+").size(20.0)),
+                                            )
+                                            .on_hover_text("Acercar")
+                                            .on_hover_cursor(CursorIcon::PointingHand);
 
-                                    ui.separator();
+                                        ui.add_space(4.0);
 
-                                    if ui.button(RichText::new("Guardar")).clicked() {
-                                        *self.map_action = MapAction::SaveScreenshot;
-                                    }
+                                        let zoom_out_button = ui
+                                            .add_sized(
+                                                button_size,
+                                                Button::new(RichText::new("-").size(20.0)),
+                                            )
+                                            .on_hover_text("Alejar")
+                                            .on_hover_cursor(CursorIcon::PointingHand);
+
+                                        ui.add_space(4.0);
+
+                                        let center_map_button = ui
+                                            .add_sized(
+                                                button_size,
+                                                Button::new(RichText::new("⌂").size(18.0)),
+                                            )
+                                            .on_hover_text("Centrar mapa")
+                                            .on_hover_cursor(CursorIcon::PointingHand);
+
+                                        ui.separator();
+
+                                        let save_map_button = ui
+                                            .button(RichText::new("Guardar").size(14.0))
+                                            .on_hover_text("Guardar captura del mapa")
+                                            .on_hover_cursor(CursorIcon::PointingHand);
+
+                                        if zoom_in_button.clicked() {
+                                            self.map_data.zoom_in();
+                                        }
+
+                                        if zoom_out_button.clicked() {
+                                            self.map_data.zoom_out();
+                                        }
+
+                                        if center_map_button.clicked() {
+                                            self.map_data.center_at(-34.6037, -58.3816);
+                                            let _ = self.map_data.memory.set_zoom(8.0);
+                                        }
+
+                                        if save_map_button.clicked() {
+                                            *self.map_action = MapAction::SaveScreenshot;
+                                        }
+                                    });
                                 });
-                            });
                         });
                 }
             })

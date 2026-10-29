@@ -85,6 +85,10 @@ impl MapData {
         let _ = self.memory.zoom_out();
     }
 
+    pub fn center_at(&mut self, lat: f64, lon: f64) {
+        self.memory.center_at(lat_lon(lat, lon));
+    }
+
     pub fn move_map(&mut self, delta_x: f64, delta_y: f64) {
         if delta_x == 0.0 && delta_y == 0.0 {
             return;
