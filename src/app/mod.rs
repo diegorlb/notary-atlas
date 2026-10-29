@@ -133,7 +133,7 @@ impl NotaryAtlas {
 
         let egui_ctx = ctx.egui_ctx.clone();
         handle.spawn(async move {
-            let mut geocoder = Geocoder::default();
+            let mut geocoder = Geocoder::new();
             geocoder.load_caches().await;
 
             let mut cached_geocoded_notaries = Arc::default();
@@ -141,7 +141,8 @@ impl NotaryAtlas {
             while let Some(command) = worker_rx.recv().await {
                 let payload = match command {
                     Command::LoadInitialData | Command::RefreshData => {
-                        match geocoder.geocode().await {
+                        let force_refresh = matches!(command, Command::RefreshData);
+                        match geocoder.geocode(force_refresh).await {
                             Ok(notaries) => {
                                 let data = Arc::new(notaries);
                                 let groups = group_notaries(&data, 0..data.len());

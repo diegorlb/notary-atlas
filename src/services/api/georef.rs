@@ -198,12 +198,16 @@ struct GeorefAddressAPIResponseAddress {
 const DEPARTMENT_API_URL: &str = "https://apis.datos.gob.ar/georef/api/v2.1/departamentos";
 const ADDRESS_API_URL: &str = "https://apis.datos.gob.ar/georef/api/v2.1/direcciones";
 
-#[derive(Default, Clone)]
+#[derive(Clone)]
 pub struct GeorefClient {
     client: Client,
 }
 
 impl GeorefClient {
+    pub const fn new(client: Client) -> Self {
+        Self { client }
+    }
+
     pub async fn query_departments(
         &self,
         names: &[String],

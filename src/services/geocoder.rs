@@ -1,7 +1,8 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
 
 use anyhow::Result;
 use itertools::Itertools as _;
+use reqwest::ClientBuilder;
 use serde::{Serialize, de::DeserializeOwned};
 use tokio::task::spawn_blocking;
 
@@ -132,7 +133,6 @@ fn find_location(
         })
 }
 
-#[derive(Default)]
 pub struct Geocoder {
     georef_client: GeorefClient,
     colescba_client: ColescbaClient,
@@ -143,6 +143,23 @@ pub struct Geocoder {
 }
 
 impl Geocoder {
+    pub fn new() -> Self {
+        let client = ClientBuilder::new()
+            .user_agent("NotaryAtlas/1.0")
+            .timeout(Duration::from_secs(16))
+            .build()
+            .unwrap_or_default();
+
+        Self {
+            georef_client: GeorefClient::new(client.clone()),
+            colescba_client: ColescbaClient::new(client),
+
+            department_cache: DepartmentCache::default(),
+            georef_cache: LocationCache::default(),
+            geocoded_notaries_cache: Vec::default(),
+        }
+    }
+
     pub async fn load_caches(&mut self) {
         self.department_cache = load_cache(DEPARTMENTS_CACHE_PATH).await;
         self.georef_cache = load_cache(GEOREF_CACHE_PATH).await;
@@ -157,7 +174,16 @@ impl Geocoder {
         Ok(())
     }
 
-    pub async fn geocode(&mut self) -> Result<Vec<GeocodedNotary>> {
+    pub async fn geocode(&mut self, force_refresh: bool) -> Result<Vec<GeocodedNotary>> {
+        if !force_refresh && !self.geocoded_notaries_cache.is_empty() {
+            log::info!(
+                "Loaded {} notaries directly from local disk cache.",
+                self.geocoded_notaries_cache.len()
+            );
+
+            return Ok(self.geocoded_notaries_cache.clone());
+        }
+
         let original_notaries = self.colescba_client.query_notaries().await?;
         log::info!("Fetched {} notaries from API", original_notaries.len());
 

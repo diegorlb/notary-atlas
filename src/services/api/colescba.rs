@@ -90,12 +90,16 @@ struct NotaryAPIDistrict {
 const COLESCBA_API_URL: &str =
     "https://api.colescba.org.ar/wordpress/api/colescba/nomina-notarial-bsas/notarios/search";
 
-#[derive(Default, Clone)]
+#[derive(Clone)]
 pub struct ColescbaClient {
     client: Client,
 }
 
 impl ColescbaClient {
+    pub const fn new(client: Client) -> Self {
+        Self { client }
+    }
+
     pub async fn query_notaries(&self) -> Result<Vec<Notary>> {
         let request = NotaryAPIRequest::default();
 

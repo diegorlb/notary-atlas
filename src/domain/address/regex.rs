@@ -10,7 +10,7 @@ pub static CLEANUP_SET: LazyLock<RegexSet> = LazyLock::new(|| {
         r"\([^)]*(?:\)|$)",
         // DASH_ALIAS
         r"\s*-[^-]+-\s*",
-        // KM_NUMBER_PATTERN
+        // KM
         r"\bkm\b\.?\s*\d+(?:[.,]\d+)?",
         // DANGLING_NUMBER
         r"\b(?:n[º°.]?|nro\.?|numero)[\s,;.]*$",
